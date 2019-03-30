@@ -1,8 +1,10 @@
-module util
+using LinearAlgebra, Statistics, Plots
 
-using LinearAlgebra, Statistics
-
-export meshgrid, genSinusoid, genGabor
+function draw_box(x, y)
+    canvas = zeros(height, width)
+    canvas[mod.(x:x+box_height, height).+1, mod.(y:y+box_width, width).+1] .= 1
+    return canvas
+end
 function meshgrid(vx::AbstractVector{T}, vy::AbstractVector{T}) where T
     m, n = length(vy), length(vx)
     vx = reshape(vx, 1, n)
@@ -10,31 +12,36 @@ function meshgrid(vx::AbstractVector{T}, vy::AbstractVector{T}) where T
     (repeat(vx, m, 1), repeat(vy, 1, n))
 end
 
-function genSinusoid(sz, A, theta, sf, rho)
+function genSinusoid(sz, theta, sf; rho=0.0)
     radius = Int32.(round.(sz ./ 2))
-    x,y = meshgrid(-radius[1]:radius[1]+1,
-                    -radius[2]:radius[2]+1)
+    x,y = meshgrid(-radius[1]:radius[1]-1,
+                    -radius[2]:radius[2]-1)
 
     omega = (cos(deg2rad(theta)),
      sin(deg2rad(theta)))
-    stims = A * cos.(omega[1]*sf*x .+ omega[2]*sf*y .+ rho)
+    stims = cos.(omega[1]*sf*x .+ omega[2]*sf*y .+ rho)
     return stims
 end
 
-function genGabor(sz, theta, K)
-    radius = Int32.(round.(sz ./ 2))
-    x,y = meshgrid(-radius[1]:radius[1]+1,
-                    -radius[2]:radius[2]+1)
+function gaussian_2d(sz, sd; offset=(0.0, 0.0))
+    radius = Int32.(round.(sz ./2))
+    center_ = (radius[1] + offset[1], radius[2] + offset[2])
+    x = repeat(collect(1:2radius[1]), 1, 2)
+    # x = repeat(collect(-radius[1]:radius[1]-1), 1,2);
+    exp_ = exp.(-((x[:,1] .- center_[1] ).^2 .+ (x[:,2] .- center_[2])'.^2) ./ (2(2sd^2))) ;
+    exp_[findall(exp_ .<= 1e-6)] .= 0.0
+    return exp_ ./ sum(exp_)
+end
 
-    omega = [cos(deg2rad(theta)),
-     sin(deg2rad(theta))]
-
-    x1 = x .* cos(deg2rad(theta)) .+ y .* sin(deg2rad(theta))
-    y1 = -x .* sin(deg2rad(theta)) .+ y .* sin(deg2rad(theta))
-
-    gauss = omega .^2 ./ (4pi * K^2) .* exp( .- omega.^2 ./ 8K.^2 * 4(x1.^2 .+ y1.^2))
-    sinusoid = cos.(omega .* x1) .* exp(K^2 / 2)
-    gabor = gauss * sinusoid
+function genGabor(sz, theta, sf, sd; phase=0.0, offset=(0.0, 0.0))
+    sine_array = genSinusoid(sz, theta, sf; rho=phase)
+    mask = gaussian_2d(sz, sd; offset=offset) #.- gaussian_2d(sz, 3sd/2; offset=offset)
+     gabor = mask .* sine_array
     return gabor
 end
+
+function norm_(X)
+    mn = mean(X)
+    std_ = std(X)
+    return (X .- mn) ./ std_
 end
